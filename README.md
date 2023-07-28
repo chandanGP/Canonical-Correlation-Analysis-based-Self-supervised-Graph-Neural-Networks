@@ -1,0 +1,1 @@
+# Canonical-Correlation-Analysis-based-Self-supervised-Graph-Neural-Networks
