@@ -12,14 +12,17 @@ import time
 
 
 
-#encoder with random augmentation
 class CCA_homo(torch.nn.Module):
     def __init__(this,channel_lst):
         super().__init__()
         this.GCN_module=torch.nn.ModuleList()
-        for in_ch , out_ch in channel_lst:
+        this.activation_layers = torch.nn.ModuleList()
+        for in_ch , out_ch in channel_lst[:-1]:
             this.GCN_module.append(GCNConv(in_ch,out_ch))
-        this.activation = torch.nn.Sigmoid()
+            this.activation_layers.append(torch.nn.Sigmoid())
+        
+        in_ch, out_ch = channel_lst[-1][0], channel_lst[-1][1]
+        this.GCN_module.append(GCNConv(in_ch,out_ch))
 
     def augment(this,graph,pe,pf):
         output=Data()
@@ -36,22 +39,25 @@ class CCA_homo(torch.nn.Module):
     def forward(this, graph,aug_pe1=0.5,aug_pf1=0.5,aug_pe2=0.5,aug_pf2=0.5):
         this.device = next(this.parameters()).device
         if(not this.training):
-            for conv in this.GCN_module:
+            for conv, act in zip(this.GCN_module[:-1],this.activation_layers):
                 graph.x=conv(graph.x,graph.edge_index)
-                graph.x = this.activation(graph.x)
+                graph.x = act(graph.x)
+            graph.x=this.GCN_module[-1](graph.x,graph.edge_index)
             return (graph.x-graph.x.mean(0))/graph.x.std(0)
-
         #augmenting graph
         graph1 = this.augment(graph,aug_pe1,aug_pf1)
         graph2 = this.augment(graph,aug_pe2,aug_pf2)
 
         #getting embeddings
-        for conv in this.GCN_module:
+        for conv, act in zip(this.GCN_module[:-1],this.activation_layers):
             graph1.x=conv(graph1.x,graph1.edge_index)
-            graph1.x=this.activation(graph1.x)
-        for conv in this.GCN_module:
+            graph1.x = act(graph1.x)
+        graph1.x = this.GCN_module[-1](graph1.x,graph1.edge_index)
+
+        for conv, act  in zip(this.GCN_module[:-1],this.activation_layers):
             graph2.x=conv(graph2.x,graph2.edge_index)
-            graph2.x=this.activation(graph2.x)
+            graph2.x=act(graph2.x)
+        graph2.x = this.GCN_module[-1](graph2.x,graph2.edge_index)
         #normalizing node embeddings
         z1_norm=((graph1.x-graph1.x.mean(0))/graph1.x.std(0))/torch.sqrt(torch.tensor(graph1.x.shape[0]))
         z2_norm=((graph2.x-graph2.x.mean(0))/graph2.x.std(0))/torch.sqrt(torch.tensor(graph2.x.shape[0]))
@@ -64,9 +70,13 @@ class CCA_GCA_aug_homo(torch.nn.Module):
     def __init__(this,channel_lst):
         super().__init__()
         this.GCN_module=torch.nn.ModuleList()
-        for in_ch , out_ch in channel_lst:
+        this.activation_layers = torch.nn.ModuleList()
+        for in_ch , out_ch in channel_lst[:-1]:
             this.GCN_module.append(GCNConv(in_ch,out_ch))
-        this.activation = torch.nn.Sigmoid()
+            this.activation_layers.append(torch.nn.Sigmoid())
+        
+        in_ch, out_ch = channel_lst[-1][0], channel_lst[-1][1]
+        this.GCN_module.append(GCNConv(in_ch,out_ch))
 
     def gca_augmentation_degree(this,graph,pe,pte,pf,ptf,epsilon=10**(-40)):
         output=Data()
@@ -102,9 +112,10 @@ class CCA_GCA_aug_homo(torch.nn.Module):
     def forward(this, graph,pe1=0.5,pte1=0.5,pf1=0.5,ptf1=0.5,pe2=0.5,pte2=0.5,pf2=0.5,ptf2=0.5):
         this.device = next(this.parameters()).device
         if(not this.training):
-            for conv in this.GCN_module:
+            for conv, act in zip(this.GCN_module[:-1],this.activation_layers):
                 graph.x=conv(graph.x,graph.edge_index)
-                graph.x = this.activation(graph.x)
+                graph.x = act(graph.x)
+            graph.x=this.GCN_module[-1](graph.x,graph.edge_index)
             return (graph.x-graph.x.mean(0))/graph.x.std(0)
 
         #augmenting graph
@@ -112,18 +123,21 @@ class CCA_GCA_aug_homo(torch.nn.Module):
         graph2 = this.gca_augmentation_degree(graph,pe2,pte2,pf2,ptf2)
 
         #getting embeddings
-        for conv in this.GCN_module:
+        for conv, act in zip(this.GCN_module[:-1],this.activation_layers):
             graph1.x=conv(graph1.x,graph1.edge_index)
-            graph1.x=this.activation(graph1.x)
-        for conv in this.GCN_module:
+            graph1.x = act(graph1.x)
+        graph1.x = this.GCN_module[-1](graph1.x,graph1.edge_index)
+
+        for conv, act  in zip(this.GCN_module[:-1],this.activation_layers):
             graph2.x=conv(graph2.x,graph2.edge_index)
-            graph2.x=this.activation(graph2.x)
+            graph2.x=act(graph2.x)
+        graph2.x = this.GCN_module[-1](graph2.x,graph2.edge_index)
         #normalizing node embeddings
         z1_norm=((graph1.x-graph1.x.mean(0))/graph1.x.std(0))/torch.sqrt(torch.tensor(graph1.x.shape[0]))
         z2_norm=((graph2.x-graph2.x.mean(0))/graph2.x.std(0))/torch.sqrt(torch.tensor(graph2.x.shape[0]))
 
         return z1_norm , z2_norm
-
+        
 #cca loss(prefered)
 def loss_cca2(z1,z2,device,param=10**(-3)):
     temp1=((z1-z2)**2).sum()
